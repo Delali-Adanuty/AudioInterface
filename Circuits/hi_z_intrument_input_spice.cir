@@ -1,0 +1,72 @@
+Guitar high-Z front end -> PCM1802 input (Teensy 4.1 USB audio interface)
+*
+*
+* ================= Parameters =================
+.param Rb=1Meg          ; bias resistor
+.param Radc=20k         ; PCM1802 input resistance
+.param Vrip=0           ; supply ripple amplitude on +5V_A
+.param Frip=120         ; supply ripple frequency
+
+* ================= Guitar (humbucker, volume and tone at 10) =================
+V1    emf  0    SINE(0 0.5 1k) AC 1
+* V1  emf  0    SINE(0 0.5 110 0 3)                       ; plucked A2, decaying
+Lpu   emf  tip  4 Rser=8k       ; coil inductance + DC resistance
+Cpu   tip  0    100p            ; winding capacitance
+Rvol  tip  0    500k            ; volume pot at full
+Rtone tip  nt   500k            ; tone pot at full...
+Ctone nt   0    22n             ; ...in series with tone cap
+Ccab  tip  0    500p            ; ~5 m cable
+
+* ================= Input network =================
+Rpd   tip  0    10Meg           ; pulldown (pop suppression)
+Rrf   tip  nrf  1k              ; RF filter R
+Crf   nrf  0    220p            ; RF filter C (~720 kHz)
+Cin   nrf  inp  100n            ; input coupling (film), 1.6 Hz HPF with Rb
+Rbias inp  vref {Rb}            ; bias feed from VREF
+
+* ================= VREF (2.5 V) =================
+R1    v5   vref 100k
+R2    vref 0    100k
+Cref  vref 0    10u
+
+* ================= Buffer (U1A, unity-gain follower) =================
+XU1A  inp  out  v5  0  out  RRIO_OPAMP
+
+
+* ================= Output to ADC =================
+Cout  out  nc   10u             ; output coupling (non-polar)
+Rs    nc   adc  100             ; isolation resistor
+Cadc  adc  0    1n              ; charge reservoir
+Radcin adc vadcb {Radc}         ; PCM1802 input resistance to its internal bias
+Eadcb vadcb 0   v5 0 0.5        ; PCM1802 internal bias ~ VCC/2
+
+* ================= Supply =================
+V5    v5   0    SINE(5 {Vrip} {Frip})
+* ================= Analyses  =================
+.ac dec 100 10 100k
+* .tran 0 50m 0 1u
+* .tran 0 3 0 100u startup
+
+
+* ================= Measurements =================
+.meas AC  pk_tip MAX mag(V(tip))
+.meas AC  pk_adc MAX mag(V(adc))
+.meas TRAN vadc_max MAX V(adc)
+.meas TRAN vadc_min MIN V(adc)
+.meas TRAN vref_rip PP V(vref)
+
+* ================= Behavioral rail-to-rail op-amp (stand-in for MCP6022) =================
+.subckt RRIO_OPAMP inp inn vp vn out
+Rdiff inp inn 1T
+Ccm   inp vn  6p
+G1    0   int inp inn 1m
+Rol   int 0   100Meg
+Cpole int 0   15.9p
+D1    int vp  DCLAMP
+D2    vn  int DCLAMP
+Bout  o1  0   V=limit(V(int), V(vn)+0.02, V(vp)-0.02)
+Rout  o1  out 25
+.model DCLAMP D(Ron=10 Roff=1G Vfwd=0)
+.ends RRIO_OPAMP
+
+.end
